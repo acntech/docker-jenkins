@@ -4,7 +4,7 @@ MAINTAINER Thomas Johansen "thomas.johansen@accenture.com"
 
 ARG JENKINS_VERSION=2.46.2
 ARG JENKINS_URL=https://repo.jenkins-ci.org/public/org/jenkins-ci/main/jenkins-war/${JENKINS_VERSION}/jenkins-war-${JENKINS_VERSION}.war
-ARG JENKINS_SHA=33a3f4d983c6188a332291e1d974afa0a2ee96a0ae3cb6dd4f2098086525f9f1
+ARG JENKINS_SHA=aa7f243a4c84d3d6cfb99a218950b8f7b926af7aa2570b0e1707279d464472c7
 ARG JENKINS_USER=jenkins
 ARG JENKINS_GROUP=jenkins
 ARG JENKINS_UID=1000
