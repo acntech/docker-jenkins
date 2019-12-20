@@ -1,84 +1,53 @@
-FROM acntechie/maven:latest
+FROM jenkins/jenkins
+
 MAINTAINER Thomas Johansen "thomas.johansen@accenture.com"
 
+# Build args
+ARG MAVEN_VERSION="3.6.3"
+ARG DOCKER_COMPOSE_VERSION="1.25.0"
 
-ARG JENKINS_VERSION=2.46.2
-ARG JENKINS_URL=https://repo.jenkins-ci.org/public/org/jenkins-ci/main/jenkins-war/${JENKINS_VERSION}/jenkins-war-${JENKINS_VERSION}.war
-ARG JENKINS_SHA=aa7f243a4c84d3d6cfb99a218950b8f7b926af7aa2570b0e1707279d464472c7
-ARG JENKINS_USER=jenkins
-ARG JENKINS_GROUP=jenkins
-ARG JENKINS_UID=1000
-ARG JENKINS_GID=1000
-ARG TINI_VERSION=0.14.0
-ARG TINI_SHA=6c41ec7d33e857d4779f14d9c74924cab0c7973485d2972419a3b7c7620ff5fd
-ARG TINI_URL=https://github.com/krallin/tini/releases/download/v${TINI_VERSION}/tini-static-amd64
-ARG JENKINS_DOCKER_URL=https://raw.githubusercontent.com/jenkinsci/docker/master
+# Environment variables
+ENV MAVEN_HOME "/opt/maven/default"
+ENV M2_HOME "${MAVEN_HOME}"
+ENV PATH "${PATH}:${MAVEN_HOME}/bin"
 
+# Run the following commands as root
+USER root
 
-ENV JENKINS_HOME /var/jenkins_home
-ENV JENKINS_SHARE /usr/share/jenkins
-ENV JENKINS_SLAVE_AGENT_PORT 50000
-ENV JENKINS_UC https://updates.jenkins.io
-ENV JENKINS_VERSION ${JENKINS_VERSION}
-ENV COPY_REFERENCE_FILE_LOG ${JENKINS_HOME}/copy_reference_file.log
+# Install Apache Maven
+RUN wget --no-cookies --no-check-certificate "https://www.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz" -O /tmp/maven.tar.gz && \
+    wget --no-cookies --no-check-certificate "https://www.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz.asc" -O /tmp/maven.tar.gz.asc && \
+    wget --no-cookies --no-check-certificate "https://www.apache.org/dist/maven/KEYS" -O /tmp/maven.KEYS && \
+    gpg --import /tmp/maven.KEYS && \
+    gpg --verify /tmp/maven.tar.gz.asc /tmp/maven.tar.gz && \
+    mkdir /opt/maven && \
+    tar -xzvf /tmp/maven.tar.gz -C /opt/maven/ && \
+    cd /opt/maven && \
+    ln -s apache-maven-${MAVEN_VERSION}/ default && \
+    rm -f /tmp/maven.* && \
+    update-alternatives --install "/usr/bin/mvn" "mvn" "/opt/maven/default/bin/mvn" 1 && \
+    update-alternatives --set "mvn" "/opt/maven/default/bin/mvn"
 
-
-ADD ${JENKINS_DOCKER_URL}/jenkins-support /usr/local/bin/jenkins-support
-ADD ${JENKINS_DOCKER_URL}/jenkins.sh /usr/local/bin/jenkins.sh
-ADD ${JENKINS_DOCKER_URL}/plugins.sh /usr/local/bin/plugins.sh
-ADD ${JENKINS_DOCKER_URL}/install-plugins.sh /usr/local/bin/install-plugins.sh
-ADD ${JENKINS_DOCKER_URL}/init.groovy ${JENKINS_SHARE}/ref/init.groovy.d/tcp-slave-agent-port.groovy
-
-
+# Install Docker
 RUN apt-get update && \
-    apt-get -y upgrade && \
-    apt-get install -y git curl && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get -y install apt-transport-https \
+    ca-certificates \
+    curl \
+    gnupg2 \
+    software-properties-common && \
+    curl -fsSL https://download.docker.com/linux/$(. /etc/os-release; echo "$ID")/gpg > /tmp/docker-key; apt-key add /tmp/docker-key && \
+    add-apt-repository \
+        "deb [arch=amd64] https://download.docker.com/linux/$(. /etc/os-release; echo "$ID") $(lsb_release -cs) stable" && \
+    apt-get update && \
+    apt-get -y install docker-ce
 
-RUN wget --no-cookies \
-         --no-check-certificate \
-         ${TINI_URL} \
-         -O /bin/tini
+# Install Docker Compose
+RUN curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" \
+         -o /usr/local/bin/docker-compose && \
+    chmod +x /usr/local/bin/docker-compose
 
-RUN echo "${TINI_SHA} /bin/tini" | sha256sum -c -
+# Add jenkins user to docker group
+RUN usermod -a -G docker jenkins
 
-RUN groupadd -g ${JENKINS_GID} ${JENKINS_GROUP} && \
-    useradd -d ${JENKINS_HOME} -u ${JENKINS_UID} -g ${JENKINS_GID} -m -s /bin/bash ${JENKINS_USER}
-
-RUN mkdir -p ${JENKINS_SHARE}/ref/init.groovy.d
-
-RUN wget --no-cookies \
-         --no-check-certificate \
-         ${JENKINS_URL} \
-         -O ${JENKINS_SHARE}/jenkins.war
-
-RUN echo "${JENKINS_SHA} ${JENKINS_SHARE}/jenkins.war" | sha256sum -c -
-
-RUN chown -R ${JENKINS_USER}:${JENKINS_GROUP} \
-          ${JENKINS_HOME} \
-          ${JENKINS_SHARE} \
-          /usr/local/bin/jenkins-support \
-          /usr/local/bin/jenkins.sh \
-          /usr/local/bin/plugins.sh \
-          /usr/local/bin/install-plugins.sh
-
-RUN chmod +x /bin/tini \
-             /usr/local/bin/jenkins-support \
-             /usr/local/bin/jenkins.sh \
-             /usr/local/bin/plugins.sh \
-             /usr/local/bin/install-plugins.sh
-
-
-USER ${JENKINS_USER}
-
-
-EXPOSE 8080 50000
-
-
-WORKDIR ${JENKINS_HOME}
-
-
-VOLUME ${JENKINS_HOME}
-
-
-ENTRYPOINT ["/bin/tini", "--", "/usr/local/bin/jenkins.sh"]
+# Change back to application user
+USER jenkins
